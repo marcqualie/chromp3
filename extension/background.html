@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Background Page</title>
+	<script type="text/javascript" src="js/mootools.js"></script>
+	<script>
+	
+	var tracks = {};
+	var json = {};
+	var name = 'player';
+	var playing = false;
+	var loaded = false;
+	var audio;
+	var track = 0;
+	var offset = 0;
+	var limit = 10;
+	var lastFilter = '';
+	var filterResults = 0;
+	var repeat = false;
+	var shuffle = false;
+	
+	// Loader
+	addEvent('domready', function() {
+		name = 'chromp3';
+		console.log('[' + name + '] Initialized');
+		audio = new Audio();
+		getTracks();
+		fireEvent('audio.status');
+		calcDuration.periodical(200);
+	});
+		
+	// Start/Stop
+	function play (id) {
+		if ((!loaded || track != id) && id) {
+			var t = tracks[id];
+			if (!t) return;
+			var url = "http://home.marcqualie.com/music/track.php?t=" + encodeURIComponent(t.file);
+			if (track) audio.pause();
+			track = id;
+			audio.src = url;
+//			audio.load();
+			loaded = true;
+//			fireEvent('audio.status');
+			chrome.browserAction.setTitle({'title':t.title + ' by ' + t.artist});
+			var playFunc = function() {
+				playing = true;
+				audio.play();
+				fireEvent('audio.play');
+				fireEvent('audio.status');
+			};
+//			audo.onload = playFunc;
+			audio.load();
+			playFunc.delay(100);
+			/*
+			try {
+				chrome.tts.speak(t.title + ', by ' + t.artist, {
+					rate:.4,
+					pitch: 1,
+					gender: 'female',
+					onEvent: function(e) {
+						if (e.type == 'end' || e.type == 'error' || e.type == 'cancelled') {
+							playFunc();
+						}
+					}
+				}, function() {
+					fireEvent('audio.status');
+				});
+			} catch (e) {
+				playFunc();
+			}
+			*/
+		} else if (playing) {
+			audio.pause();
+			playing = false;
+			fireEvent('audio.pause');
+			fireEvent('audio.status');
+			var t = tracks[id];
+			if (!t) return;
+			chrome.browserAction.setTitle({'title':'(Paused) ' + t.title + ' by ' + t.artist});
+		} else if (track) {
+			audio.play();
+			playing = true;
+			fireEvent('audio.play');
+			fireEvent('audio.status');
+			var t = tracks[id];
+			if (!t) return;
+			chrome.browserAction.setTitle({'title':t.title + ' by ' + t.artist});
+		}
+	}
+	function stop () {
+		audio.pause();
+	}
+		
+	// Download Tracks
+	function getTracks () {
+		new Request.JSON({
+			url: 'http://home.marcqualie.com/music/tracks.php',
+			onSuccess: function(j) {
+				json = j;
+//				console.log(json);
+				tracks = j.tracks ? j.tracks : [];
+				fireEvent('audio.status');
+			}
+		}).send();
+	}
+	
+	// Filtering
+	function trackMatch(v, t) {
+		v = v.toLowerCase();
+		if (v.indexOf('/loved') > -1) {
+			if (lovedTracks.contains(t.id)) return true;
+			return false;
+		}
+		if (v.indexOf('/') === 0) return false;
+		if (v.indexOf('g:') === 0) {
+			v = v.replace('g:', '').trim();
+			if (t.genre.toLowerCase().indexOf(v) > -1) return true;
+		} else if (v.indexOf('a:') === 0) {
+			v = v.replace('a:', '').trim();
+			if (t.artist.toLowerCase().indexOf(v) > -1) return true;
+		} else {
+			var match = true;
+			var neg = false;
+			var ov = false;
+			v.split(' ').each(function(w) {
+				if (w.indexOf('-') === 0) {
+					if (w.length > 2) {
+						if (t.title.toLowerCase().indexOf(w.replace('-', '')) > -1
+						||  t.artist.toLowerCase().indexOf(w.replace('-', '')) > -1
+						) { match = false; neg = true; }
+					}
+				} else if (w.indexOf('+') === 0 && neg) {
+					if (w.length > 2) {
+						if (t.title.toLowerCase().indexOf(w.replace('+', '')) > -1
+						||  t.artist.toLowerCase().indexOf(w.replace('+', '')) > -1
+						) match = true
+					}
+				} else if (t.title.toLowerCase().indexOf(w) < 0 &&  t.artist.toLowerCase().indexOf(w) < 0) { match = false; ov = true; }
+			});
+			return ov ? false : match;
+		}
+		return false;
+	}
+	
+	// Toggle Settings
+	function toggle (val) {
+		this[val] = !this[val];
+		fireEvent('audio.status');
+	}
+	
+	// Calculate Position
+	function calcDuration() {
+		if (track) {
+			if (audio.duration > 0) {
+				if (audio.currentTime == audio.duration) {
+					next();
+				}
+			}
+		}
+	}
+	
+	// Movement
+	function next () {
+		if (repeat) {
+			var ctrack = track;
+			track = 0;
+			play(ctrack);
+			return;
+		} else if (shuffle) {
+			var i = Math.floor(Math.random() * (tracks.length - 1));
+			play(i);
+		} else {
+			play(track + 1);
+		}
+	}
+	function skip () {
+		next();
+	}
+	
+	// Love things? Good!
+	var lovedTracks = localStorage.lovedTracks ? localStorage.lovedTracks.split(',') : [];
+	function loveTrack(id) {
+		if (lovedTracks.contains(id)) lovedTracks.erase(id);
+		else lovedTracks.push(id);
+		localStorage.lovedTracks = lovedTracks.join(',');
+	}
+	function checkLoveTrack (id) {
+		return lovedTracks.contains(id) ? true : false;
+	}
+	
+	// Variable Calculation
+	function calculate() {
+		var t = tracks[track];
+		if (!t) track = 0;
+		if (offset > filterResults - limit) offset = (filterResults - limit);
+		if (offset < 0) offset = 0;
+	}
+	
+	// Listen for keybaord commands in pages
+	chrome.extension.onRequest.addListener(function(req, sender, sendResponse) {
+	  if (req.method == 'pause') play();
+	  if (req.method == 'skip') skip();
+	  if (req.method == 'toggleShuffle') toggle('shuffle');
+	});
+	</script>
+</head>
+<body>
+
+</body>
+</html>

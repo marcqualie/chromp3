@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Popup Page</title>
+  <script type="text/javascript" src="js/mootools.js"></script>
+  <script>
+    var core = chrome.extension.getBackgroundPage();
+	addEvent('mousewheel', function(e) {
+		core.offset = Math.round(core.offset - e.wheel * 3);
+		core.calculate();
+		renderTrackList(core.lastFilter);
+	});
+	addEvent('keydown', function(e) {
+		if (e.key == '.') core.play();
+	});
+	function renderTrackList (f) {
+		if (f == null) f = core.lastFilter;
+		core.lastFilter = f;
+		if (!f) f = '';
+//		$('track-list').empty();
+		var count = 0;
+		for (var i = 0, l = core.tracks.length; i < l;i++) {
+			var tk = core.tracks[i];
+			if (!tk.title) tk.title = '';
+			if (!tk.artist) tk.artist = '';
+			if (!tk.genre) tk.genre = '';
+			var el = $('track-' + i);
+			if (core.trackMatch(f, tk) || !f) {
+				count++;
+				if (count > core.offset && count < (core.offset + core.limit)) {
+					if (!el) {
+						el = new Element('div');
+						el.set('id', 'track-' + i);
+						el.addClass('track');
+						el.innerHTML = ""
+							+ "<a class=\"title\""
+							+ " href=\"javascript:void(0)\""
+							+ " onclick=\"core.play(" + i + ")\""
+							+ "></a>"
+							+ "<a class=\"artist\" href=\"javascript:void(0)\" onclick=\"searchFor('a:" + tk.artist + "')\">" + tk.artist + "</a>"
+							+ "<div class=\"cl\"></div>"
+							+ "<a class=\"star\" onclick=\"core.loveTrack('" + tk.id + "');renderTrackList();\"></a>"
+							+ "";
+						el.inject($('track-list'));
+					}
+					el.getElement('.title').set('html', tk.title);
+					el.setStyle.delay(100, el, ['top', (26 * (count - 1)) - (core.offset * 26)]);
+					if (core.checkLoveTrack(tk.id)) el.addClass('loved');
+					else el.removeClass('loved');
+					if (i == core.track) el.addClass('playing');
+					else el.removeClass('playing');
+				} else if (el) {
+					el.set('id', '__dead__').destroy();
+				}
+			} else if (el) {
+				el.set('id', '__dead__').destroy();
+			}
+		}
+		core.filterResults = count;
+		if (core.offset > count) { core.offset = Math.max(count - core.limit, 0); renderTrackList(f); }
+		renderUI();
+	}
+	function searchFor (str) {
+		$('search-box').value  = str;
+		renderTrackList(str);
+	}
+	function renderUI() {
+		core.calculate();
+		$('min-text').set('html', core.offset + 1);
+		$('max-text').set('html', Math.min(core.offset + core.limit, core.filterResults));
+		$('results-count').set('html', core.filterResults);
+		if (core.playing) { $('play-button').addClass('playing'); $('track-list').addClass('playing'); }
+		else { $('play-button').removeClass('playing'); $('track-list').removeClass('playing'); }
+		if (core.repeat) $('repeat-button').addClass('active');
+		else $('repeat-button').removeClass('active');
+		if (core.shuffle) $('shuffle-button').addClass('active');
+		else $('shuffle-button').removeClass('active');
+		
+		console.log(core.json);
+		$('online-state').set('html', core.json.user.id
+			? '<b>Online (' + core.json.user.name + ')</b>'
+			: "<a href=\"javascript:window.open('http://www.marcqualie.com/login/?next=chromeExtension:chromp3')\">Authentication Required</a>"
+		);
+		
+		var tk = core.tracks[core.track];
+		$('now-playing').set('html', core.track
+			? '<a>' + tk.title + '</a> by '
+				+ '<a href="javacript:void(0)" onclick="searchFor(\'a:' + tk.artist + '\')">' + tk.artist + '</a>'
+				+ "<a class=\"star big" + (core.checkLoveTrack(tk.id) ? " active" : "") + "\" onclick=\"core.loveTrack('" + tk.id + "');renderTrackList();\"></a>"
+			: 'No song playing'
+		);
+	}
+	addEvent('load', function() {
+		core.removeEvents('audio.status');
+		core.addEvent('audio.status', function() { renderTrackList(); });
+		$('search-box').value = core.lastFilter;
+		renderTrackList(core.lastFilter);
+		displayDuration();
+		displayDuration.periodical(200);
+	});
+	function displayDuration() {
+		var dur = $('duration');
+		if (core.track) {
+			if (core.audio.duration > 0) {
+				dur.set('html', toTime(core.audio.currentTime) + ' / ' + toTime(core.audio.duration));
+				return;
+			}
+		}
+		dur.set('html', '0:00 / 0:00');
+	}
+	function toTime (n) {
+		n = Math.round(n);
+		m = Math.floor(n / 60);
+		s = Math.floor(n % 60);
+		if (s < 10) s = '0' + s;
+		return m + ':' + s;
+	}
+	(function() {
+		var s = document.createElement('link');
+		s.type = 'text/css';
+		s.rel = 'stylesheet';
+		s.href = 'css/popup.css?' + Math.random() + Math.random();
+		$$('head')[0].adopt(s);
+	})();
+  </script>
+</head>
+<body>
+
+<div id="controls">
+	<ul class="fl">
+		<li id="play-button"><a href="javascript:void(0)" onclick="core.play()">&nbsp;</a></li>
+		<li id="repeat-button"><a href="javascript:void(0)" onclick="core.toggle('repeat')">&nbsp;</a></li>
+		<li id="shuffle-button"><a href="javascript:void(0)" onclick="core.toggle('shuffle')">&nbsp;</a></li>
+		<li id="skip-button" class="active"><a href="javascript:void(0)" onclick="core.skip()">&nbsp;</a></li>
+		<div class="cl"></div>
+	</ul>
+	<div id="duration" class="fl" style="margin-left:10px"></div>
+	<div id="search">
+		<input id="search-box" type="search" name="q" autofocus="1" placeholder="Search" autocomplete="no" onkeyup="renderTrackList(this.value)"/>
+	</div>
+	<div class="cl"></div>
+</div>
+
+<div id="track-info"><span id="now-playing"></span></div>
+
+<div id="track-list"></div>
+
+<div id="foot">
+	<div class="fl">
+		<b id="min-text">0</b> - <b id="max-text">0</b> of <b id="results-count">0</b> Results
+	</div>
+	<div class="fr">
+		<span id="online-state">syncing..</span>
+		- <a href="javascript:void(0)" onclick="core.getTracks()">Sync</a>
+	</div>
+	<div class="cl"></div>
+</div>
+
+</body>
+</html>

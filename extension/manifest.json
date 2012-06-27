@@ -1,0 +1,30 @@
+{
+	"name":					"Chromp3"
+,	"version":				"0.0.3"
+,	"description":			"A simple MP3 Player which runs as a Chrome Extension"
+,	"icons": {
+		"16":				"icons/16.png"
+	,	"19":				"icons/19.png"
+	,	"48":				"icons/48.png"
+	,	"128":				"icons/128.png"
+	}
+,	"content_scripts": [{
+		"matches": ["http://*/*", "https://*/*"]
+	,	"js": ["js/content.js"]
+	,	"run_at": "document_end"
+	}]
+,	"browser_action": {
+		"default_icon":		"icons/19.png"
+	,	"default_title":	"Chromp3"
+	,	"default_popup":	"popup.html"
+	}
+,	"permissions": [
+		"background"
+	,	"http://*/*"
+	,	"https://*/*"
+	,	"tabs"
+	,	"tts"
+	,	"unlimitedStorage"
+	]
+,	"background_page":		"background.html"
+}
